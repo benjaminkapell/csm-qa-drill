@@ -26,6 +26,12 @@ const HAS_CLI = !HAS_KEY && process.env.CLAUDE_CLI !== "off" && spawnSync("claud
 const AI = HAS_KEY ? "api" : HAS_CLI ? "cli" : null;
 const AI_LABEL = AI === "api" ? MODEL : AI === "cli" ? `Claude Code · ${CLI_MODEL}` : null;
 
+// Optional private profile on this machine only (local/ is gitignored). The page loads it when the browser has none.
+const LOCAL_PROFILE = path.join(here, "local", "profile.json");
+async function localProfile() {
+  try { return JSON.parse(await fs.readFile(LOCAL_PROFILE, "utf8")); } catch { return null; }
+}
+
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 
 // ---------- Claude ----------
@@ -181,7 +187,8 @@ function apiError(res, err) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
-    if (url.pathname === "/api/status") return send(res, 200, { ai: Boolean(AI), via: AI, model: AI_LABEL });
+    if (url.pathname === "/api/status") return send(res, 200, { ai: Boolean(AI), via: AI, model: AI_LABEL, localProfile: Boolean(await localProfile()) });
+    if (url.pathname === "/api/local-profile") { const p = await localProfile(); return p ? send(res, 200, p) : send(res, 404, { error: "No local/profile.json" }); }
     if (req.method === "POST" && (url.pathname === "/api/grade" || url.pathname === "/api/report")) {
       if (!AI) return send(res, 503, { error: "AI grading is off. Add ANTHROPIC_API_KEY to .env (or install Claude Code) and restart." });
       const body = await readJson(req);

@@ -13,7 +13,7 @@ const K = { attempts: "csmqa.attempts", profile: "csmqa.profile", settings: "csm
 let attempts = store.get(K.attempts, []);
 let profile = store.get(K.profile, null);
 let settings = Object.assign({ autoRead: true, lang: "en-US" }, store.get(K.settings, {}));
-let aiOn = false, aiModel = null;
+let aiOn = false, aiModel = null, hasLocal = false;
 let mode = "mock", phase = "intro";
 let cur = null, answer = "", lastFb = null, errMsg = "";
 let mock = null, hot = null, report = null, tick = null;
@@ -448,7 +448,7 @@ function profileView() {
       ${PROFILE_FIELDS.map(([k, label, hint]) => k === "project"
         ? `<label for="f-${k}">${label}<span>${esc(hint)}</span><input type="text" id="f-${k}" value="${esc(p[k] || "")}"></label>`
         : `<label for="f-${k}">${label}<span>${esc(hint)}</span><textarea id="f-${k}">${esc(p[k] || "")}</textarea></label>`).join("")}
-      <div class="row"><button class="btn primary" type="submit">Save profile</button><button class="btn" type="button" id="example">Load example project</button><span class="meta" id="saved"></span></div>
+      <div class="row"><button class="btn primary" type="submit">Save profile</button>${hasLocal ? `<button class="btn" type="button" id="local">Load my profile file</button>` : ""}<button class="btn" type="button" id="example">Load example project</button><span class="meta" id="saved"></span></div>
     </form>
   </section>
   <section class="card">
@@ -464,6 +464,7 @@ function bindProfile() {
     profile = p; store.set(K.profile, profile); $("#saved").textContent = "Saved."; renderStatus();
   };
   $("#example").onclick = () => { profile = { ...EXAMPLE_PROFILE }; store.set(K.profile, profile); renderAll(); };
+  if ($("#local")) $("#local").onclick = () => loadLocalProfile().then(renderAll);
   let armed = false;
   $("#reset").onclick = () => {
     if (!armed) { armed = true; $("#reset").textContent = "Click again to delete all saved answers"; return; }
@@ -515,4 +516,15 @@ window.addEventListener("hashchange", () => { const h = location.hash.slice(1); 
 const h0 = location.hash.slice(1);
 if (["mock", "hot", "cards", "wall", "profile"].includes(h0)) { mode = h0; if (mode === "cards") startCards(); }
 renderAll();
-fetch("/api/status").then((r) => r.json()).then((s) => { aiOn = !!s.ai; aiModel = s.model; renderAll(); }).catch(() => renderAll());
+async function loadLocalProfile() {
+  const r = await fetch("/api/local-profile");
+  if (!r.ok) return false;
+  profile = await r.json(); store.set(K.profile, profile); return true;
+}
+fetch("/api/status").then((r) => r.json()).then(async (s) => {
+  aiOn = !!s.ai; aiModel = s.model; hasLocal = !!s.localProfile;
+  // A profile file on this machine fills an empty browser profile (or replaces the example) automatically.
+  const empty = !profile || !Object.values(profile).some((v) => v && String(v).trim()) || profile.project === EXAMPLE_PROFILE.project;
+  if (hasLocal && empty) await loadLocalProfile().catch(() => {});
+  renderAll();
+}).catch(() => renderAll());

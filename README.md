@@ -43,6 +43,10 @@ Get a key at [console.anthropic.com](https://console.anthropic.com/). Grading on
 
 The server uses Anthropic's server-side refusal fallback (`fallbacks: "default"`), so if a request is ever declined by a safety classifier it is retried on a fallback model automatically.
 
+### Optional: keep your profile in a file
+
+Put your profile in `local/profile.json` (same keys as the *My project* form: `project`, `what`, `role`, `stakeholders`, `story`, `pitch`, `negotiation`, `conversation`, `speaking`, `learnings`). The game loads it automatically when the browser has no profile yet, and *My project* gets a "Load my profile file" button. The `local/` folder is in `.gitignore`, so it never ends up on GitHub.
+
 ## Privacy
 
 - The server only listens on `127.0.0.1`, so nobody else on your network can reach it.
