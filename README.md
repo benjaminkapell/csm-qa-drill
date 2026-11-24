@@ -29,13 +29,15 @@ Open **http://localhost:4317** in **Chrome or Edge** (voice input uses the brows
 
 ### Optional: AI grading with Claude
 
-Without a key, you grade yourself with a checklist of key points. With your own Anthropic API key, Claude scores theory, application and reflection, lists what you missed, writes a stronger answer from your project facts, and asks follow-up questions like an examiner.
+Without AI, you grade yourself with a checklist of key points. With AI on, Claude scores theory, application and reflection, lists what you missed, writes a stronger answer from your project facts, and asks follow-up questions like an examiner.
 
 ```bash
 cp .env.example .env
 # open .env and paste your key after ANTHROPIC_API_KEY=
 npm start
 ```
+
+**No API key but you use Claude Code?** Then you don't need a key: if the `claude` command is installed and logged in, the server grades through it automatically (on your own Claude plan, model `opus`, low effort). It runs with no tools, no access to your files and no saved session. Set `CLAUDE_CLI_MODEL=sonnet` in `.env` to use a lighter model, or `CLAUDE_CLI=off` to turn this off. An API key always wins if both are there.
 
 Get a key at [console.anthropic.com](https://console.anthropic.com/). Grading one answer costs roughly 2–3 US cents with the default model (`claude-opus-5-5`, low effort). You can change the model or effort in `.env`.
 
@@ -45,7 +47,7 @@ The server uses Anthropic's server-side refusal fallback (`fallbacks: "default"`
 
 - The server only listens on `127.0.0.1`, so nobody else on your network can reach it.
 - Your project profile and progress are stored in your browser's `localStorage`. "Reset progress" on the *My project* tab clears your answers.
-- With AI grading on, the question, your answer and your project profile are sent to Anthropic's API when you press *Grade*. Nothing else leaves your machine.
+- With AI grading on, the question, your answer and your project profile are sent to Anthropic (through the API or Claude Code) when you press *Grade*. Nothing else leaves your machine.
 - Voice input uses the browser's speech recognition. In Chrome, that audio is processed by Google's speech service.
 - Never commit your `.env` file. It's already in `.gitignore`.
 

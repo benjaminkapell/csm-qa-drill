@@ -226,7 +226,7 @@ function introView() {
     <ol>
       <li>Listen to the question (or read it).</li>
       <li>Press <b>Answer by voice</b>, speak, press <b>Stop</b>. Fix the text if the browser misheard you.</li>
-      <li>Press <b>Grade</b>. ${aiOn ? "Claude scores theory, application and reflection, lists what you missed and writes a stronger answer." : "Tick the key points you covered (add an API key for AI feedback, see the README)."}</li>
+      <li>Press <b>Grade</b>. ${aiOn ? "Claude scores theory, application and reflection, lists what you missed and writes a stronger answer." : "Tick the key points you covered (for AI feedback add an API key or install Claude Code, see the README)."}</li>
       <li>After 15 minutes you get a report per area.</li>
     </ol>
     ${settingsRow}

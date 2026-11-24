@@ -1,9 +1,12 @@
 // CSM Q&A Drill: a tiny local server.
-// Serves the game from ./public and, if an Anthropic API key is set, grades answers with Claude.
+// Serves the game from ./public and grades answers with Claude: with an Anthropic API key if one is set,
+// otherwise through a logged-in Claude Code CLI (`claude -p`) if it is installed. Without either, self-grading.
 // It only listens on 127.0.0.1, so nothing is reachable from other machines.
 
 import http from "node:http";
 import fs from "node:fs/promises";
+import os from "node:os";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
@@ -17,6 +20,11 @@ const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 const EFFORT = process.env.ANTHROPIC_EFFORT || "low";
 const HAS_KEY = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const client = HAS_KEY ? new Anthropic() : null;
+// No key: use Claude Code if it is installed (it runs on the user's own Claude plan). CLAUDE_CLI=off turns this off.
+const CLI_MODEL = process.env.CLAUDE_CLI_MODEL || "opus";
+const HAS_CLI = !HAS_KEY && process.env.CLAUDE_CLI !== "off" && spawnSync("claude", ["--version"], { stdio: "ignore", timeout: 15_000 }).status === 0;
+const AI = HAS_KEY ? "api" : HAS_CLI ? "cli" : null;
+const AI_LABEL = AI === "api" ? MODEL : AI === "cli" ? `Claude Code · ${CLI_MODEL}` : null;
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 
@@ -63,7 +71,43 @@ function profileBlock(p = {}) {
   return rows.map(([k, v]) => `${k}: ${clip(v, 1500)}`).join("\n");
 }
 
+// Claude Code in print mode: no tools, no project files, no session saved, in an empty temp folder.
+const SANDBOX = path.join(os.tmpdir(), "csm-qa-drill-sandbox");
+const running = new Set();
+process.on("exit", () => { for (const c of running) c.kill("SIGTERM"); });
+
+function askClaudeCli(prompt, schema) {
+  return new Promise((resolve, reject) => {
+    fs.mkdir(SANDBOX, { recursive: true }).then(() => {
+      const args = ["-p", "--output-format", "json", "--model", CLI_MODEL, "--effort", EFFORT,
+        "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--safe-mode",
+        "--system-prompt", "You grade oral-exam answers. Reply only with the requested JSON.",
+        "--json-schema", JSON.stringify(schema)];
+      const child = spawn("claude", args, { cwd: SANDBOX, stdio: ["pipe", "pipe", "pipe"] });
+      running.add(child);
+      let out = "", err = "";
+      const timer = setTimeout(() => child.kill("SIGTERM"), 180_000);
+      child.stdout.on("data", (d) => (out += d));
+      child.stderr.on("data", (d) => (err += d));
+      child.on("error", (e) => { clearTimeout(timer); reject(e); });
+      child.on("close", (code, signal) => {
+        running.delete(child);
+        clearTimeout(timer);
+        if (signal) return reject(Object.assign(new Error("Claude Code took too long. Try again."), { status: 504 }));
+        let res;
+        try { res = JSON.parse(out); } catch {
+          return reject(Object.assign(new Error(`Claude Code failed (exit ${code}). Is it logged in? Run \`claude\` once in a terminal. ${(err || out).slice(0, 200)}`), { status: 502 }));
+        }
+        if (res.is_error || !res.structured_output) return reject(Object.assign(new Error(`Claude Code: ${String(res.result ?? res.subtype).slice(0, 300)}`), { status: 502 }));
+        resolve(res.structured_output);
+      });
+      child.stdin.end(prompt);
+    }, reject);
+  });
+}
+
 async function askClaude(prompt, schema) {
+  if (AI === "cli") return askClaudeCli(prompt, schema);
   const res = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 4000,
@@ -137,9 +181,9 @@ function apiError(res, err) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
-    if (url.pathname === "/api/status") return send(res, 200, { ai: HAS_KEY, model: HAS_KEY ? MODEL : null });
+    if (url.pathname === "/api/status") return send(res, 200, { ai: Boolean(AI), via: AI, model: AI_LABEL });
     if (req.method === "POST" && (url.pathname === "/api/grade" || url.pathname === "/api/report")) {
-      if (!client) return send(res, 503, { error: "AI grading is off. Add ANTHROPIC_API_KEY to .env and restart." });
+      if (!AI) return send(res, 503, { error: "AI grading is off. Add ANTHROPIC_API_KEY to .env (or install Claude Code) and restart." });
       const body = await readJson(req);
       const out = url.pathname === "/api/grade" ? await grade(body) : await report(body);
       return send(res, 200, out);
@@ -159,5 +203,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`\n  CSM Q&A Drill is running: http://localhost:${PORT}`);
-  console.log(HAS_KEY ? `  AI grading: on (${MODEL}, effort ${EFFORT})\n` : "  AI grading: off (add ANTHROPIC_API_KEY to .env to turn it on)\n");
+  console.log(AI === "api" ? `  AI grading: on (API key, ${MODEL}, effort ${EFFORT})\n`
+    : AI === "cli" ? `  AI grading: on (Claude Code CLI, ${CLI_MODEL}, effort ${EFFORT})\n`
+    : "  AI grading: off (add ANTHROPIC_API_KEY to .env, or install and log in to Claude Code)\n");
 });
