@@ -6,6 +6,7 @@ It covers all six knowledge areas: stakeholder management, storytelling, pitchin
 
 ## What's inside
 
+- **Learn:** 26 short lessons across all knowledge areas (8 on stakeholder management, plus storytelling, pitching, visual presentations, public speaking, negotiating and difficult conversations). Each one explains the idea in plain words, says how to apply it to your project, gives one line to remember and ends with quick multiple-choice checks. Lessons tagged *From class* were covered in the lectures; *Extra* fills gaps. When an area is done, "Test me on this" jumps straight into questions for that area.
 - **Mock Q&A (15 min):** one question per knowledge area first, then the examiner goes back to your weakest spots and asks follow-ups. You get a report per area at the end.
 - **Hot seat:** tough, pushy questions with 60 seconds per answer.
 - **Theory cards:** 29 models and authors (Freeman, Mendelow, RACI, SOSTAC, Minto, Getting to Yes, BATNA/ZOPA, Voss, NVC, SBI, Edmondson, Hofstede, the Culture Map …). Say what each one is and where you used it.
@@ -45,7 +46,7 @@ The server uses Anthropic's server-side refusal fallback (`fallbacks: "default"`
 
 ### Optional: keep your profile in a file
 
-Put your profile in `local/profile.json` (same keys as the *My project* form: `project`, `what`, `role`, `stakeholders`, `story`, `pitch`, `negotiation`, `conversation`, `speaking`, `learnings`). The game loads it automatically when the browser has no profile yet, and *My project* gets a "Load my profile file" button. The `local/` folder is in `.gitignore`, so it never ends up on GitHub.
+Put your profile in `local/profile.json` (same keys as the *My project* form: `project`, `what`, `role`, `stakeholders`, `story`, `pitch`, `negotiation`, `conversation`, `speaking`, `learnings`). The game loads it automatically when the browser has no profile yet, and *My project* gets a "Load my profile file" button. The `local/` folder is in `.gitignore`, so it never ends up on GitHub. In the same way, `local/lessons.json` (same shape as `public/lessons.js`, with an optional `example` field per lesson) replaces the built-in lessons on your machine.
 
 ## Privacy
 

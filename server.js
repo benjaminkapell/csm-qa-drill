@@ -28,9 +28,11 @@ const AI_LABEL = AI === "api" ? MODEL : AI === "cli" ? `Claude Code · ${CLI_MOD
 
 // Optional private profile on this machine only (local/ is gitignored). The page loads it when the browser has none.
 const LOCAL_PROFILE = path.join(here, "local", "profile.json");
-async function localProfile() {
-  try { return JSON.parse(await fs.readFile(LOCAL_PROFILE, "utf8")); } catch { return null; }
+const LOCAL_LESSONS = path.join(here, "local", "lessons.json"); // replaces the generic lessons in public/lessons.js
+async function readLocal(file) {
+  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return null; }
 }
+const localProfile = () => readLocal(LOCAL_PROFILE);
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
 
@@ -187,7 +189,8 @@ function apiError(res, err) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
-    if (url.pathname === "/api/status") return send(res, 200, { ai: Boolean(AI), via: AI, model: AI_LABEL, localProfile: Boolean(await localProfile()) });
+    if (url.pathname === "/api/status") return send(res, 200, { ai: Boolean(AI), via: AI, model: AI_LABEL, localProfile: Boolean(await localProfile()), localLessons: Boolean(await readLocal(LOCAL_LESSONS)) });
+    if (url.pathname === "/api/local-lessons") { const l = await readLocal(LOCAL_LESSONS); return l ? send(res, 200, l) : send(res, 404, { error: "No local/lessons.json" }); }
     if (url.pathname === "/api/local-profile") { const p = await localProfile(); return p ? send(res, 200, p) : send(res, 404, { error: "No local/profile.json" }); }
     if (req.method === "POST" && (url.pathname === "/api/grade" || url.pathname === "/api/report")) {
       if (!AI) return send(res, 503, { error: "AI grading is off. Add ANTHROPIC_API_KEY to .env (or install Claude Code) and restart." });

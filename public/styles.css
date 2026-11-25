@@ -122,3 +122,37 @@ textarea{min-height:140px;resize:vertical;margin-top:8px}
 .report td.n{font-family:var(--f-mono);text-align:center}
 .tablewrap{overflow-x:auto}
 .foot{margin-top:28px;font-size:12px;color:var(--muted)}
+
+/* learn */
+.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:16px}
+.lesson-area{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:10px;min-width:0}
+.lesson-area.done{border-color:var(--good)}
+.lesson-area .meta{margin:0}
+.bar{height:6px;border-radius:99px;background:var(--door);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.lesson-area.done .bar i{background:var(--good)}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+.tag.class{background:var(--good-soft);color:var(--good)}
+.tag.extra{background:var(--warn-soft);color:var(--warn)}
+.ltitle{font-size:clamp(22px,2.8vw,30px);margin:14px 0 2px;line-height:1.15}
+.plain{font-size:16px;margin:12px 0 8px;max-width:68ch}
+.points{margin:6px 0 0;padding-left:20px;max-width:68ch}
+.points li{margin:5px 0}
+.karina{margin:16px 0 0;padding:10px 14px;border-left:3px solid var(--plate);background:var(--bg);border-radius:0 10px 10px 0;font-style:italic}
+.karina .meta{display:block;font-style:normal;margin-bottom:2px}
+.example{margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--accent-soft)}
+.example p{margin:4px 0 0}
+.remember{margin:14px 0 0;padding:10px 14px;border:1px dashed var(--accent);border-radius:12px}
+.check{padding:10px 0;border-bottom:1px solid var(--line)}
+.check:last-child{border-bottom:0}
+.cq{font-weight:700;margin:0 0 8px}
+.opts{display:grid;gap:6px}
+.opt{text-align:left;border:1px solid var(--line);background:var(--bg);padding:9px 12px;border-radius:10px;line-height:1.4}
+.opt:not(:disabled):hover{border-color:var(--accent)}
+.opt:disabled{cursor:default}
+.opt.right{background:var(--good-soft);border-color:var(--good)}
+.opt.wrong{background:var(--bad-soft);border-color:var(--bad)}
+.opt.dim{opacity:.55}
+.why{margin:8px 0 0;font-size:14px}
+.why.ok b{color:var(--good)} .why.no b{color:var(--bad)}
+.lesson-nav{margin-top:16px}

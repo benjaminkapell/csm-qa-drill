@@ -1,4 +1,5 @@
 import { AREAS, CORE, DIMS, QUESTIONS, CARDS, EXAMPLE_PROFILE, PROFILE_FIELDS } from "./questions.js";
+import { LESSONS } from "./lessons.js";
 
 /* ======================= helpers ======================= */
 const $ = (s) => document.querySelector(s);
@@ -7,14 +8,18 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked: keep in memory */ } },
 };
-const K = { attempts: "csmqa.attempts", profile: "csmqa.profile", settings: "csmqa.settings" };
+const K = { attempts: "csmqa.attempts", profile: "csmqa.profile", settings: "csmqa.settings", learn: "csmqa.learn" };
 
 /* ======================= state ======================= */
 let attempts = store.get(K.attempts, []);
 let profile = store.get(K.profile, null);
 let settings = Object.assign({ autoRead: true, lang: "en-US" }, store.get(K.settings, {}));
 let aiOn = false, aiModel = null, hasLocal = false;
-let mode = "mock", phase = "intro";
+let mode = "learn", phase = "intro";
+let lessons = LESSONS; // replaced by local/lessons.json when the server has one
+let learned = store.get(K.learn, {}); // lessonId -> { read, right, total }
+let learn = { area: null, i: 0, picked: {} };
+let practice = null; // { area } when practising one area outside a mock
 let cur = null, answer = "", lastFb = null, errMsg = "";
 let mock = null, hot = null, report = null, tick = null;
 let deck = [], card = { pos: 0, shown: false };
@@ -159,7 +164,8 @@ async function grade(item, text) {
 /* ======================= routing ======================= */
 function setMode(m) {
   stopTick(); stopListening(); if ("speechSynthesis" in window) speechSynthesis.cancel();
-  mode = m; phase = "intro"; cur = null; lastFb = null; answer = ""; mock = null; hot = null;
+  mode = m; phase = "intro"; cur = null; lastFb = null; answer = ""; mock = null; hot = null; practice = null;
+  if (m === "learn") learn = { area: null, i: 0, picked: {} };
   if (location.hash !== "#" + m) history.replaceState(null, "", "#" + m);
   if (m === "cards") startCards();
   renderAll();
@@ -181,6 +187,7 @@ function renderStatus() {
 /* ======================= main views ======================= */
 function renderMain() {
   const m = $("#main");
+  if (mode === "learn") { m.innerHTML = learn.area ? lessonView() : learnHome(); bindLearn(); return; }
   if (mode === "profile") { m.innerHTML = profileView(); bindProfile(); return; }
   if (mode === "wall") { m.innerHTML = wallIntro(); bindWallIntro(); return; }
   if (mode === "cards") { m.innerHTML = cardsView(); bindCards(); return; }
@@ -323,6 +330,7 @@ function feedbackView(fb) {
       ${canFollow ? `<button class="btn primary" id="follow">Answer the follow-up</button>` : ""}
       <button class="btn ${canFollow ? "" : "primary"}" id="next">Next question</button>
       <button class="btn" id="retry">Try this one again</button>
+      ${lessons.some((l) => l.area === cur.q.area) ? `<button class="btn" id="learnit">Learn ${esc(AREAS[cur.q.area].name.toLowerCase())}</button>` : ""}
     </div>
     ${canFollow ? `<p class="meta" style="margin-top:8px">The examiner would ask: “${esc(fb.followup)}”</p>` : ""}
   </section>`;
@@ -341,6 +349,7 @@ function bindAsk() {
   $("#follow")?.addEventListener("click", () => askNew(cur.q, lastFb.followup));
   $("#next")?.addEventListener("click", goNext);
   $("#retry")?.addEventListener("click", () => askNew(cur.q, cur.followUp));
+  $("#learnit")?.addEventListener("click", () => openArea(cur.q.area));
   paintMic(); showErr();
 }
 async function doGrade() {
@@ -368,6 +377,7 @@ function saveSelf() {
   goNext();
 }
 function goNext() {
+  if (mode === "mock" && !mock) { const a = practice?.area || cur.q.area; return askNew(pickFor(a, weakestDim(a))); }
   if (mode === "mock") { if (mock && Date.now() >= mock.endsAt) return finishMock(); return askNew(nextMockQuestion()); }
   askNew(pickHot());
 }
@@ -438,6 +448,125 @@ function bindCards() {
   }));
 }
 
+
+/* ======================= learn ======================= */
+const LEARN_AREAS = [...CORE, "DC"];
+const areaLessons = (a) => lessons.filter((l) => l.area === a);
+function areaProgress(a) {
+  const ls = areaLessons(a);
+  const read = ls.filter((l) => learned[l.id]?.read).length;
+  let right = 0, total = 0;
+  ls.forEach((l) => { if (learned[l.id]?.total) { right += learned[l.id].right; total += learned[l.id].total; } });
+  return { n: ls.length, read, right, total };
+}
+function nextUnread() {
+  for (const a of LEARN_AREAS) { const i = areaLessons(a).findIndex((l) => !learned[l.id]?.read); if (i >= 0) return { a, i }; }
+  return null;
+}
+function openArea(a, i = 0) {
+  stopTick(); stopListening();
+  mode = "learn"; phase = "intro"; practice = null; mock = null; hot = null;
+  if (location.hash !== "#learn") history.replaceState(null, "", "#learn");
+  // Shuffle the answer order each time a lesson opens, so the right answer's position can't be learned.
+  const l = areaLessons(a)[i];
+  const order = (l?.checks || []).map((c) => c.options.map((_, k) => k).sort(() => Math.random() - 0.5));
+  learn = { area: a, i, picked: {}, order };
+  renderAll(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function learnHome() {
+  const nu = nextUnread();
+  const total = lessons.length, done = lessons.filter((l) => learned[l.id]?.read).length;
+  const cards = LEARN_AREAS.map((a) => {
+    const p = areaProgress(a); if (!p.n) return "";
+    const pct = p.total ? Math.round((p.right / p.total) * 100) : null;
+    const state = p.read === p.n ? "done" : p.read ? "started" : "";
+    return `<div class="lesson-area ${state}">
+      <div class="row" style="justify-content:space-between"><span class="plate"><b>${AREAS[a].no}</b>${esc(AREAS[a].name)}</span>${a === "DC" ? `<span class="meta">module goal</span>` : ""}</div>
+      <div class="bar" aria-hidden="true"><i style="width:${Math.round((p.read / p.n) * 100)}%"></i></div>
+      <p class="meta">${p.read}/${p.n} lessons read${pct === null ? "" : ` · checks ${pct}% right`}</p>
+      <div class="row">
+        <button class="btn ${state === "done" ? "" : "dark"}" data-open="${a}">${state === "done" ? "Review" : state ? "Continue" : "Start"}</button>
+        ${p.read ? `<button class="btn" data-test="${a}">Test me on this</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  return `<section class="card intro">
+    <h2>Learn first, then test</h2>
+    <p>Each area has a few short lessons: what the idea means in plain words, ${lessons.some((l) => l.karina) ? "what Karina said in class, " : ""}how it applies to ${esc(projectName())}, and one line to remember. Each lesson ends with 2–3 quick checks. When an area is done, test yourself on it out loud.</p>
+    <p class="tip"><b>How the Q&amp;A is graded:</b> a high grade needs both: apply each concept to ${esc(projectName())} with concrete facts, <i>and</i> know the theory and the key names behind it. Then say what you'd do differently (reflection).</p>
+    <p class="meta">${done}/${total} lessons read. <span class="tag class">From class</span> was covered in the lectures, <span class="tag extra">Extra</span> fills a gap the lectures didn't cover.</p>
+    ${nu ? `<div class="next">Next up: <b>${esc(areaLessons(nu.a)[nu.i].title)}</b> <button class="btn primary" style="margin-left:8px" id="nextLesson">${done ? "Continue learning" : "Start learning"}</button></div>` : `<div class="next">All lessons read. Run a <b>mock Q&amp;A</b> to put it together.</div>`}
+  </section>
+  <div class="lesson-grid">${cards}</div>`;
+}
+function lessonView() {
+  const ls = areaLessons(learn.area), l = ls[learn.i]; if (!l) { learn.area = null; return learnHome(); }
+  const last = learn.i === ls.length - 1;
+  const checks = (l.checks || []).map((c, ci) => {
+    const pick = learn.picked[ci];
+    const opts = (learn.order?.[ci] || c.options.map((_, k) => k)).map((oi) => {
+      const o = c.options[oi];
+      const st = pick === undefined ? "" : oi === c.answer ? "right" : oi === pick ? "wrong" : "dim";
+      return `<button class="opt ${st}" data-c="${ci}" data-o="${oi}" ${pick !== undefined ? "disabled" : ""}>${esc(fill(o))}</button>`;
+    }).join("");
+    return `<div class="check"><p class="cq">${ci + 1}. ${esc(fill(c.q))}</p><div class="opts">${opts}</div>
+      ${pick !== undefined ? `<p class="why ${pick === c.answer ? "ok" : "no"}"><b>${pick === c.answer ? "Right." : "Not quite."}</b> ${esc(fill(c.why))}</p>` : ""}</div>`;
+  }).join("");
+  const nChecks = (l.checks || []).length;
+  return `<section class="card lesson">
+    <div class="qhead">
+      <div class="row"><span class="plate"><b>${AREAS[l.area].no}</b>${esc(AREAS[l.area].name)}</span><span class="tag ${l.source === "class" ? "class" : "extra"}">${l.source === "class" ? `From class${l.when ? " · " + esc(l.when) : ""}` : "Extra"}</span></div>
+      <span class="meta">Lesson ${learn.i + 1} / ${ls.length}</span>
+    </div>
+    <h2 class="ltitle">${esc(l.title)}</h2>
+    ${l.who ? `<p class="meta">${esc(l.who)}</p>` : ""}
+    <p class="plain">${esc(fill(l.plain))}</p>
+    ${l.points?.length ? `<ul class="points">${l.points.map((x) => `<li>${esc(fill(x))}</li>`).join("")}</ul>` : ""}
+    ${l.karina ? `<blockquote class="karina"><span class="meta">In class</span>${esc(l.karina)}</blockquote>` : ""}
+    ${l.example ? `<div class="example"><span class="meta">Your example: ${esc(projectName())}</span><p>${esc(fill(l.example))}</p></div>` : ""}
+    ${l.apply ? `<div class="example"><span class="meta">Apply it to ${esc(projectName())}</span><p>${esc(fill(l.apply))}</p></div>` : ""}
+    ${l.remember ? `<p class="remember"><b>Remember:</b> ${esc(fill(l.remember))}</p>` : ""}
+  </section>
+  ${nChecks ? `<section class="card"><h2 class="h-small">Quick check</h2>${checks}</section>` : ""}
+  <div class="row lesson-nav">
+    <button class="btn" id="toAreas">All areas</button>
+    ${learn.i > 0 ? `<button class="btn" id="prevLesson">Previous</button>` : ""}
+    ${last ? `<button class="btn primary" id="areaTest">Done: test me on ${esc(AREAS[l.area].name.toLowerCase())}</button><button class="btn" id="nextArea">Next area</button>`
+           : `<button class="btn primary" id="nextLessonBtn">Next lesson</button>`}
+  </div>`;
+}
+function markRead() {
+  const l = areaLessons(learn.area)[learn.i]; if (!l) return;
+  const nAns = Object.keys(learn.picked).length;
+  const right = Object.entries(learn.picked).filter(([ci, o]) => l.checks[ci].answer === o).length;
+  const prev = learned[l.id] || {};
+  learned[l.id] = { read: true, right: nAns ? right : prev.right || 0, total: nAns ? nAns : prev.total || 0 };
+  store.set(K.learn, learned);
+}
+function bindLearn() {
+  document.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => {
+    const a = b.dataset.open; const i = areaLessons(a).findIndex((l) => !learned[l.id]?.read); openArea(a, i < 0 ? 0 : i);
+  }));
+  document.querySelectorAll("[data-test]").forEach((b) => b.addEventListener("click", () => drill(b.dataset.test, weakestDim(b.dataset.test))));
+  $("#nextLesson")?.addEventListener("click", () => { const n = nextUnread(); if (n) openArea(n.a, n.i); });
+  document.querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => {
+    learn.picked[Number(b.dataset.c)] = Number(b.dataset.o);
+    const l = areaLessons(learn.area)[learn.i];
+    if (Object.keys(learn.picked).length === (l.checks || []).length) markRead();
+    const y = window.scrollY; renderMain(); renderSide(); window.scrollTo(0, y);
+  }));
+  $("#toAreas")?.addEventListener("click", () => { markRead(); learn = { area: null, i: 0, picked: {} }; renderAll(); });
+  $("#prevLesson")?.addEventListener("click", () => openArea(learn.area, learn.i - 1));
+  $("#nextLessonBtn")?.addEventListener("click", () => { markRead(); openArea(learn.area, learn.i + 1); });
+  $("#areaTest")?.addEventListener("click", () => { markRead(); drill(learn.area, weakestDim(learn.area)); });
+  $("#nextArea")?.addEventListener("click", () => {
+    markRead();
+    const k = LEARN_AREAS.indexOf(learn.area);
+    const nxt = LEARN_AREAS.slice(k + 1).find((a) => areaLessons(a).length);
+    if (nxt) openArea(nxt); else { learn = { area: null, i: 0, picked: {} }; renderAll(); }
+  });
+}
+
 /* ======================= profile ======================= */
 function profileView() {
   const p = profile || {};
@@ -503,18 +632,22 @@ function renderSide() {
     return `<li><span class="plate" style="padding:2px 6px">${AREAS[a.area]?.no || "–"}</span><span class="q" title="${esc(a.q)}">${esc(a.q)}</span><span class="pill">${sc}</span></li>`;
   }).join("") : `<li><span></span><span class="muted">Graded answers show up here with theory · application · reflection scores.</span><span></span></li>`;
 }
+function weakestDim(area) {
+  return ["t", "a", "r"].map((d) => ({ d, s: cellScore(area, d) ?? -1, r: Math.random() })).sort((x, y) => x.s - y.s || x.r - y.r)[0].d;
+}
 function drill(area, dim) {
-  stopTick(); mode = "mock"; mock = null;
+  stopTick(); mode = "mock"; mock = null; practice = { area };
   history.replaceState(null, "", "#mock");
   document.querySelectorAll(".tab").forEach((t) => (t.dataset.mode === "mock" ? t.setAttribute("aria-current", "page") : t.removeAttribute("aria-current")));
   askNew(pickFor(area, dim));
 }
 
 /* ======================= boot ======================= */
+const MODES = ["learn", "mock", "hot", "cards", "wall", "profile"];
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setMode(t.dataset.mode)));
-window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (["mock", "hot", "cards", "wall", "profile"].includes(h) && h !== mode) setMode(h); });
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (MODES.includes(h) && h !== mode) setMode(h); });
 const h0 = location.hash.slice(1);
-if (["mock", "hot", "cards", "wall", "profile"].includes(h0)) { mode = h0; if (mode === "cards") startCards(); }
+if (MODES.includes(h0)) { mode = h0; if (mode === "cards") startCards(); }
 renderAll();
 async function loadLocalProfile() {
   const r = await fetch("/api/local-profile");
@@ -526,5 +659,6 @@ fetch("/api/status").then((r) => r.json()).then(async (s) => {
   // A profile file on this machine fills an empty browser profile (or replaces the example) automatically.
   const empty = !profile || !Object.values(profile).some((v) => v && String(v).trim()) || profile.project === EXAMPLE_PROFILE.project;
   if (hasLocal && empty) await loadLocalProfile().catch(() => {});
+  if (s.localLessons) { const r = await fetch("/api/local-lessons").catch(() => null); if (r?.ok) lessons = await r.json(); }
   renderAll();
 }).catch(() => renderAll());
