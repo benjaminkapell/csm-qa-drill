@@ -492,7 +492,7 @@ function learnHome() {
   }).join("");
   return `<section class="card intro">
     <h2>Learn first, then test</h2>
-    <p>Each area has a few short lessons: what the idea means in plain words, ${lessons.some((l) => l.karina) ? "what Karina said in class, " : ""}how it applies to ${esc(projectName())}, and one line to remember. Each lesson ends with 2–3 quick checks. When an area is done, test yourself on it out loud.</p>
+    <p>Each area has a few short lessons: what the idea means in plain words, ${lessons.some((l) => l.karina) ? "what was said in class, " : ""}how it applies to ${esc(projectName())}, and one line to remember. Each lesson ends with 2–3 quick checks. When an area is done, test yourself on it out loud.</p>
     <p class="tip"><b>How the Q&amp;A is graded:</b> a high grade needs both: apply each concept to ${esc(projectName())} with concrete facts, <i>and</i> know the theory and the key names behind it. Then say what you'd do differently (reflection).</p>
     <p class="meta">${done}/${total} lessons read. <span class="tag class">From class</span> was covered in the lectures, <span class="tag extra">Extra</span> fills a gap the lectures didn't cover.</p>
     ${nu ? `<div class="next">Next up: <b>${esc(areaLessons(nu.a)[nu.i].title)}</b> <button class="btn primary" style="margin-left:8px" id="nextLesson">${done ? "Continue learning" : "Start learning"}</button></div>` : `<div class="next">All lessons read. Run a <b>mock Q&amp;A</b> to put it together.</div>`}
